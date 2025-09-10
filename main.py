@@ -1,9 +1,6 @@
 import csv
 import json
-
 import requests
-from tabulate import tabulate
-
 from config import cfg
 
 
@@ -123,14 +120,12 @@ class GamePriceAnalyzer:
             since_date = custom_since_date
             print(f"Usando data personalizada: {since_date}")
 
-        # Get price history overview
         print("Buscando histórico de preços...")
         history_data = self.get_price_history(since_date)
         if history_data:
             self.save_price_history_to_csv(history_data)
             print("Histórico de preços salvo!")
             if isinstance(history_data, list) and len(history_data) > 0:
-                # Format list data for display
                 display_data = []
                 for entry in history_data:
                     display_data.append(
@@ -142,9 +137,6 @@ class GamePriceAnalyzer:
                             "Desconto": f"{entry.get('deal', {}).get('cut', '')}%",
                         }
                     )
-                print(tabulate(display_data, headers="keys", tablefmt="fancy_grid"))
-            else:
-                print(tabulate(history_data, headers="keys", tablefmt="fancy_grid"))
         else:
             print("Nenhum histórico de preços encontrado")
 
