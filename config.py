@@ -4,9 +4,7 @@ from dotenv import load_dotenv
 
 class Config:
     def __init__(self):
-
         load_dotenv()
-        
-        self.API_KEY = os.getenv("API_KEY")
+        self.STEAM_API_KEY = os.getenv("STEAM_API_KEY")
 
 cfg = Config()
