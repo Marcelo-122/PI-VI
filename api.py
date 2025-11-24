@@ -1,10 +1,11 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Dict, Any
 import json
 from pathlib import Path
+from typing import Any, Dict, List
+
 import uvicorn
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, RootModel
 
 app = FastAPI(
     title="Historico de Preços de Jogos API",
@@ -20,13 +21,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DATA_FILE = Path(__file__).parent / "price_history.json"
+PRICE_DATA_FILE = Path(__file__).parent / "price_history.json"
+ECONOMIC_DATA_FILE = Path(__file__).parent / "economic_indicators.json"
 
 try:
-    with open(DATA_FILE, "r") as f:
+    with open(PRICE_DATA_FILE, "r") as f:
         price_data = json.load(f)
 except FileNotFoundError:
     price_data = {"error": "Arquivo de dados de preços não encontrado"}
+
+try:
+    with open(ECONOMIC_DATA_FILE, "r") as f:
+        economic_data = json.load(f)
+except FileNotFoundError:
+    economic_data = {"error": "Arquivo de dados econômicos não encontrado"}
 
 
 class Price(BaseModel):
@@ -41,6 +49,27 @@ class PriceHistoryResponse(BaseModel):
     prices: List[Price]
 
 
+class Indicator(BaseModel):
+    NGDPDPC: float
+    PCPIPCH: float
+    PPPPC: float
+
+
+class EconomicDataPoint(BaseModel):
+    period: int
+    period_type: str
+    indicators: Indicator
+
+
+class CountryEconomicData(RootModel[List[EconomicDataPoint]]):
+    pass
+
+
+class EconomicIndicatorsResponse(BaseModel):
+    metadata: Dict[str, Any]
+    data: Dict[str, List[EconomicDataPoint]]
+
+
 @app.get("/", tags=["Root"])
 async def root():
     return {
@@ -48,6 +77,9 @@ async def root():
         "endpoints": [
             "/prices - Retorna o histórico de preços de todos os jogos",
             "/prices/shop/{shop_id} - Retorna o preço mais recente de um jogo específico",
+            "/economic-indicators - Retorna todos os indicadores econômicos",
+            "/economic-indicators/{country} - Retorna os indicadores econômicos de um país específico",
+            "/economic-indicators/{country}/{year} - Retorna os indicadores econômicos de um país específico em um ano específico",
         ],
     }
 
@@ -57,6 +89,7 @@ async def get_all_prices():
     if "error" in price_data:
         raise HTTPException(status_code=404, detail=price_data["error"])
     return price_data
+
 
 @app.get("/prices/shop/{shop_id}", tags=["Prices"])
 async def get_prices_by_shop(shop_id: int):
@@ -71,10 +104,69 @@ async def get_prices_by_shop(shop_id: int):
 
     if not shop_prices:
         raise HTTPException(
-            status_code=404, detail=f"Nenhum preço encontrado para a loja com ID {shop_id}"
+            status_code=404,
+            detail=f"Nenhum preço encontrado para a loja com ID {shop_id}",
         )
 
     return shop_prices
+
+
+@app.get(
+    "/economic-indicators",
+    response_model=EconomicIndicatorsResponse,
+    tags=["Economic Indicators"],
+)
+async def get_economic_indicators():
+    if "error" in economic_data:
+        raise HTTPException(status_code=404, detail=economic_data["error"])
+    return economic_data
+
+
+@app.get(
+    "/economic-indicators/{country}",
+    response_model=List[EconomicDataPoint],
+    tags=["Economic Indicators"],
+)
+async def get_economic_indicators_by_country(country: str):
+    if "error" in economic_data:
+        raise HTTPException(status_code=404, detail=economic_data["error"])
+
+    country_data = economic_data.get("data", {}).get(country.upper())
+
+    if not country_data:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Nenhum dado encontrado para o país com código {country}",
+        )
+
+    return country_data
+
+
+@app.get(
+    "/economic-indicators/{country}/{year}",
+    response_model=EconomicDataPoint,
+    tags=["Economic Indicators"],
+)
+async def get_economic_indicators_by_country_and_year(country: str, year: int):
+    if "error" in economic_data:
+        raise HTTPException(status_code=404, detail=economic_data["error"])
+
+    country_data = economic_data.get("data", {}).get(country.upper())
+
+    if not country_data:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Nenhum dado encontrado para o país com código {country}",
+        )
+
+    for data_point in country_data:
+        if data_point.get("period") == year:
+            return data_point
+
+    raise HTTPException(
+        status_code=404,
+        detail=f"Nenhum dado encontrado para o ano {year} no país {country}",
+    )
 
 
 if __name__ == "__main__":
