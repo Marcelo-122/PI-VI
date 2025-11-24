@@ -28,7 +28,7 @@ class GamePriceAnalyzer:
         if start_date:
             params["since"] = start_date
 
-        print(f"Buscando dados da API...")
+        print("Buscando dados da API...")
         response = requests.get(url, params=params)
         print(f"Status: {response.status_code}")
 
@@ -103,7 +103,7 @@ class GamePriceAnalyzer:
             }
             processed_data["prices"].append(price_entry)
 
-        # Save to JSON file with pretty printing
+        # Salva o histórico de preços do jogo em um arquivo JSON
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(processed_data, f, indent=2, ensure_ascii=False)
 
@@ -123,7 +123,7 @@ class GamePriceAnalyzer:
         end_date = end_date or datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
         # Mostra os filtros ativos
-        print(f"\n=== Filtros Ativos ===")
+        print("\n=== Filtros Ativos ===")
         print(f"- Data inicial: {start_date}")
         print(f"- Data final: {end_date}")
 

@@ -62,7 +62,7 @@ class GameLookup:
             return results[0]
         
         # Múltiplos resultados
-        print(f"\n📋 Escolha um jogo:")
+        print("\n📋 Escolha um jogo:")
         print("-" * 60)
         for i, game in enumerate(results, 1):
             game_type = game.get('type', 'game').upper()
