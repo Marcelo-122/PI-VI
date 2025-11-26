@@ -50,6 +50,8 @@ class Price(BaseModel):
 class PriceHistoryResponse(BaseModel):
     game_id: str
     last_updated: str
+    start_date: str
+    end_date: str
     prices: List[Price]
 
 
@@ -80,7 +82,7 @@ async def root():
         "message": "Bem-vindo ao Historico de Preços de Jogos API",
         "endpoints": [
             "/prices - Retorna o histórico de preços de todos os jogos",
-            "/prices/{game_id} - Retorna o histórico de preços de um jogo específico",
+            "/prices/{game_id}?start_date=...&end_date=... - Retorna o histórico de preços de um jogo com filtro de data",
             "/prices/shop/{shop_id} - Retorna o preço mais recente de um jogo específico",
             "/economic-indicators - Retorna todos os indicadores econômicos",
             "/economic-indicators/{country} - Retorna os indicadores econômicos de um país específico",
@@ -97,9 +99,15 @@ async def get_all_prices():
 
 
 @app.get("/prices/{game_id}", response_model=PriceHistoryResponse, tags=["Prices"])
-async def get_prices_by_game_id(game_id: str):
-    url = f"https://api.isthereanydeal.com/games/history/v2"
+async def get_prices_by_game_id(
+    game_id: str,
+    start_date: str = None,  # ISO 8601 format
+    end_date: str = None,  # ISO 8601 format
+):
+    url = "https://api.isthereanydeal.com/games/history/v2"
     params = {"key": cfg.STEAM_API_KEY, "id": game_id}
+    if start_date:
+        params["since"] = start_date
 
     try:
         response = requests.get(url, params=params)
@@ -111,14 +119,34 @@ async def get_prices_by_game_id(game_id: str):
 
     data = response.json()
 
+    # Filter by end_date if provided
+    if end_date:
+        try:
+            end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+            data = [
+                entry
+                for entry in data
+                if datetime.fromisoformat(entry["timestamp"].replace("Z", "+00:00"))
+                <= end_dt
+            ]
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=400, detail="Invalid end_date format. Use ISO 8601."
+            )
+
     if not isinstance(data, list) or not data:
         raise HTTPException(
             status_code=404, detail=f"No price history found for game ID {game_id}."
         )
 
+    start_date = data[-1]["timestamp"]
+    end_date = data[0]["timestamp"]
+
     processed_data = {
         "game_id": game_id,
         "last_updated": datetime.utcnow().isoformat() + "Z",
+        "start_date": start_date,
+        "end_date": end_date,
         "prices": data,
     }
 
