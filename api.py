@@ -1,11 +1,15 @@
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
+import requests
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, RootModel
+
+from config import cfg
 
 app = FastAPI(
     title="Historico de Preços de Jogos API",
@@ -76,6 +80,7 @@ async def root():
         "message": "Bem-vindo ao Historico de Preços de Jogos API",
         "endpoints": [
             "/prices - Retorna o histórico de preços de todos os jogos",
+            "/prices/{game_id} - Retorna o histórico de preços de um jogo específico",
             "/prices/shop/{shop_id} - Retorna o preço mais recente de um jogo específico",
             "/economic-indicators - Retorna todos os indicadores econômicos",
             "/economic-indicators/{country} - Retorna os indicadores econômicos de um país específico",
@@ -89,6 +94,35 @@ async def get_all_prices():
     if "error" in price_data:
         raise HTTPException(status_code=404, detail=price_data["error"])
     return price_data
+
+
+@app.get("/prices/{game_id}", response_model=PriceHistoryResponse, tags=["Prices"])
+async def get_prices_by_game_id(game_id: str):
+    url = f"https://api.isthereanydeal.com/games/history/v2"
+    params = {"key": cfg.STEAM_API_KEY, "id": game_id}
+
+    try:
+        response = requests.get(url, params=params)
+        response.raise_for_status()  # Raises an exception for bad status codes
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(
+            status_code=503, detail=f"Error fetching data from API: {e}"
+        )
+
+    data = response.json()
+
+    if not isinstance(data, list) or not data:
+        raise HTTPException(
+            status_code=404, detail=f"No price history found for game ID {game_id}."
+        )
+
+    processed_data = {
+        "game_id": game_id,
+        "last_updated": datetime.utcnow().isoformat() + "Z",
+        "prices": data,
+    }
+
+    return processed_data
 
 
 @app.get("/prices/shop/{shop_id}", tags=["Prices"])
