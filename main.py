@@ -12,12 +12,14 @@ class GamePriceAnalyzer:
         self.game_id = "018d937f-21e1-728e-86d7-9acb3c59f2bb"
         self.base_url = "https://api.isthereanydeal.com"
 
-    def get_price_history(self, start_date=None, end_date=None):
-        """Busca o histórico de preços com filtros de intervalo de datas
+    def get_price_history(self, start_date=None, end_date=None, shops=None, country=None):
+        """Busca o histórico de preços com filtros de intervalo de datas e lojas
 
         Args:
             start_date (str, optional): Data de início no formato ISO (ex: 2023-01-01)
             end_date (str, optional): Data de término no formato ISO (ex: 2023-12-31)
+            shops (list, optional): Lista de IDs de lojas para filtrar (ex: ['steam'])
+            country (str, optional): Código do país (ex: 'US', 'BR', 'AR', 'TR', 'JP', 'DE')
 
         Returns:
             list: Lista de entradas de preço filtradas
@@ -28,6 +30,14 @@ class GamePriceAnalyzer:
         if start_date:
             params["since"] = start_date
 
+        # Adiciona filtro de lojas se fornecido
+        if shops:
+            params["shops"] = ",".join(map(str, shops))
+        
+        # Adiciona filtro de país se fornecido
+        if country:
+            params["country"] = country
+
         print("Buscando dados da API...")
         response = requests.get(url, params=params)
         print(f"Status: {response.status_code}")
@@ -37,6 +47,17 @@ class GamePriceAnalyzer:
             if not isinstance(data, list):
                 print("Formato de resposta inesperado")
                 return []
+
+            print(f"Total de registros recebidos da API: {len(data)}")
+            
+            # Debug: mostra as primeiras lojas encontradas
+            if data and len(data) > 0:
+                unique_shops = set()
+                for entry in data[:10]:  # Verifica os primeiros 10
+                    shop_id = entry.get("shop", {}).get("id", "")
+                    shop_name = entry.get("shop", {}).get("name", "")
+                    unique_shops.add(f"{shop_id} ({shop_name})")
+                print(f"Exemplos de lojas encontradas: {', '.join(list(unique_shops)[:5])}")
 
             # Aplica filtros de data
             filtered_data = []
@@ -75,11 +96,15 @@ class GamePriceAnalyzer:
         print(f"Erro na API: {response.text}")
         return []
 
-    def save_price_history_to_csv(self, data, filename="price_history.csv"):
+    def save_price_history_to_csv(self, data, filename="price_history.csv", country=None):
         """Salva o histórico de preços do jogo em um arquivo CSV"""
         if not data:
             print(f"Nenhum dado para salvar em {filename}")
             return
+
+        # Adiciona o país ao nome do arquivo se fornecido
+        if country:
+            filename = f"price_history_{country}.csv"
 
         processed_data = []
         for entry in data:
@@ -114,12 +139,14 @@ class GamePriceAnalyzer:
         print(f"Histórico de preços salvo em {filename}")
         return processed_data
 
-    def run_analysis(self, start_date=None, end_date=None):
-        """Realiza análise do histórico de preços com filtros de intervalo de datas
+    def run_analysis(self, start_date=None, end_date=None, shops=None, country=None):
+        """Realiza análise do histórico de preços com filtros de intervalo de datas e lojas
 
         Args:
             start_date (str, optional): Data de início no formato ISO (ex: 2023-01-01)
             end_date (str, optional): Data de término no formato ISO (ex: 2023-12-31)
+            shops (list, optional): Lista de IDs de lojas para filtrar (ex: ['steam'])
+            country (str, optional): Código do país (ex: 'US', 'BR', 'AR', 'TR', 'JP', 'DE')
         """
         print("Iniciando análise do histórico de preços...")
 
@@ -130,15 +157,21 @@ class GamePriceAnalyzer:
         print("\n=== Filtros Ativos ===")
         print(f"- Data inicial: {start_date}")
         print(f"- Data final: {end_date}")
+        if shops:
+            print(f"- Lojas: {', '.join(map(str, shops))}")
+        if country:
+            print(f"- País: {country}")
 
         print("\nBuscando histórico de preços...")
-        history_data = self.get_price_history(start_date=start_date, end_date=end_date)
+        history_data = self.get_price_history(
+            start_date=start_date, end_date=end_date, shops=shops, country=country
+        )
 
         if not history_data:
             print("\nNenhum dado encontrado com os filtros fornecidos.")
             return
 
-        prices = self.save_price_history_to_csv(history_data)
+        prices = self.save_price_history_to_csv(history_data, country=country)
         if prices:
             latest = prices[0]
             oldest = prices[-1]
@@ -176,8 +209,18 @@ class GamePriceAnalyzer:
 if __name__ == "__main__":
     analyzer = GamePriceAnalyzer()
 
-    # Exemplo de uso com intervalo de datas
-    analyzer.run_analysis(
-        start_date="2005-01-01T00:00:00Z",  # Data de início
-        end_date="2025-11-30T23:59:59Z",  # Data de término
-    )
+    # Lista de países para buscar
+    countries = ["US", "BR", "AR", "TR", "JP", "DE"]  # USA, BRA, ARG, TUR, JPN, DEU
+    
+    # Busca dados para cada país
+    for country in countries:
+        print(f"\n{'='*60}")
+        print(f"Buscando dados para: {country}")
+        print(f"{'='*60}")
+        
+        analyzer.run_analysis(
+            start_date="2005-01-01T00:00:00Z",
+            end_date="2025-11-30T23:59:59Z",
+            shops=[61],  # Mantém o parâmetro mas não filtra manualmente
+            country=country
+        )
