@@ -115,7 +115,8 @@ def main():
     print("=" * 60)
     print("Busca interativa")
     print("=" * 60)
-    selected = lookup.interactive_search("Elden Ring")
+    game_name = input("Digite o nome do jogo para buscar: ")
+    selected = lookup.interactive_search(game_name)
     if selected:
         lookup.save_to_json(selected, "selected_game.json")
     

@@ -1,19 +1,16 @@
-import json
+import pandas as pd
 from datetime import datetime
 import imfp
-import pandas as pd
 
 
 class IMFEconomicDataCollector:
-    """Coleta indicadores econômicos do IMF"""
+    """Coleta indicadores econômicos do IMF e exporta para CSV"""
 
     def __init__(self):
         self.indicators_info = {
             "PCPIPCH": "taxa de inflação, média de preços consumidores (percentual anual)",
             "NGDPDPC": "PIB per capita, preços atuais (dólares americanos)",
             "PPPPC": "PIB per capita, PPP (dólares internacionais atuais)",
-            "NGDP_RPCH": "PIB, preços constantes (percentual anual)",
-            "LUR": "taxa de desemprego (percentual do total da força de trabalho)",
         }
 
     def collect_data(self, countries, indicators, start_year, end_year):
@@ -43,7 +40,7 @@ class IMFEconomicDataCollector:
                 )
 
                 if df is not None and not df.empty:
-                    # Standardize column names - handle different possible names
+                    # Standardize column names
                     rename_map = {}
 
                     # Find year column
@@ -66,12 +63,19 @@ class IMFEconomicDataCollector:
 
                     df = df.rename(columns=rename_map)
 
-                    # Add indicator column if not present
+                    # Add indicator column and description
                     if "indicator" not in df.columns:
                         df["indicator"] = indicator
+                    
+                    df["indicator_description"] = self.indicators_info.get(
+                        indicator, indicator
+                    )
 
                     # Keep only relevant columns
-                    cols_to_keep = ["country", "year", "indicator", "value"]
+                    cols_to_keep = [
+                        "country", "year", "indicator", 
+                        "indicator_description", "value"
+                    ]
                     df = df[[col for col in cols_to_keep if col in df.columns]]
 
                     all_data.append(df)
@@ -86,121 +90,123 @@ class IMFEconomicDataCollector:
             return pd.concat(all_data, ignore_index=True)
         return pd.DataFrame()
 
-    def format_for_api(self, df):
-        """Formata dados para consumo na API como JSON"""
-
+    def prepare_csv_formats(self, df):
+        """Prepara dados em diferentes formatos CSV"""
+        
         if df.empty:
-            return {
-                "error": "Nenhum dado disponível",
-                "message": "Falha ao coletar dados do IMF",
-            }
+            print("✗ Nenhum dado disponível para exportar")
+            return None
 
-        # Validate required columns
-        required_cols = ["country", "year", "indicator", "value"]
-        missing_cols = [col for col in required_cols if col not in df.columns]
-
-        if missing_cols:
-            return {
-                "error": "Colunas obrigatórias ausentes",
-                "missing": missing_cols,
-                "available": df.columns.tolist(),
-            }
-
-        # Clean and convert data types
+        # Clean data
         df["year"] = pd.to_numeric(df["year"], errors="coerce").astype("Int64")
         df["value"] = pd.to_numeric(df["value"], errors="coerce")
         df = df.dropna(subset=["year", "value"])
 
-        # Pivot data so each country-year has all indicators
-        pivot_df = df.pivot_table(
+        formats = {}
+
+        # Formato 1: Long format (original)
+        formats["long_format"] = df.copy()
+
+        # Formato 2: Wide format - indicadores como colunas
+        wide_df = df.pivot_table(
             index=["country", "year"],
             columns="indicator",
             values="value",
             aggfunc="first",
         ).reset_index()
-
-        # Build JSON structure
-        result = {
-            "metadata": {
-                "source": "IMF (International Monetary Fund)",
-                "database": "World Economic Outlook",
-                "indicators": {
-                    code: self.indicators_info.get(code, code)
-                    for code in df["indicator"].unique()
-                },
-                "countries": sorted(df["country"].unique().tolist()),
-                "year_range": {
-                    "start": int(df["year"].min()),
-                    "end": int(df["year"].max()),
-                },
-                "total_records": len(pivot_df),
-                "generated_at": datetime.now().isoformat(),
-            },
-            "data": {},
+        
+        # Renomear colunas com descrições
+        col_rename = {
+            ind: f"{ind}_{self.indicators_info.get(ind, ind)[:30]}"
+            for ind in df["indicator"].unique()
         }
+        wide_df = wide_df.rename(columns=col_rename)
+        formats["wide_format"] = wide_df
 
-        # Group by country
-        for country in pivot_df["country"].unique():
-            country_data = pivot_df[pivot_df["country"] == country].copy()
-            country_data = country_data.sort_values("year")
+        # Formato 3: Por país (um arquivo por país seria muito, mas podemos ter tudo marcado)
+        formats["by_country"] = df.sort_values(["country", "year", "indicator"])
 
-            result["data"][country] = []
+        return formats
 
-            for _, row in country_data.iterrows():
-                year_data = {
-                    "period": int(row["year"]),
-                    "period_type": "year",
-                    "indicators": {},
-                }
+    def export_to_csv(self, formats, base_filename="economic_indicators"):
+        """Exporta dados para arquivos CSV"""
+        
+        files_created = []
+        
+        for format_name, df in formats.items():
+            filename = f"{base_filename}_{format_name}.csv"
+            df.to_csv(filename, index=False, encoding="utf-8")
+            files_created.append(filename)
+            print(f"✓ Arquivo criado: {filename} ({len(df)} linhas)")
+        
+        # Criar arquivo de metadados
+        metadata_file = f"{base_filename}_metadata.csv"
+        metadata = pd.DataFrame([
+            {
+                "field": "source",
+                "value": "IMF (International Monetary Fund)"
+            },
+            {
+                "field": "database",
+                "value": "World Economic Outlook"
+            },
+            {
+                "field": "generated_at",
+                "value": datetime.now().isoformat()
+            },
+            {
+                "field": "total_countries",
+                "value": len(formats["long_format"]["country"].unique())
+            },
+            {
+                "field": "total_indicators",
+                "value": len(formats["long_format"]["indicator"].unique())
+            },
+            {
+                "field": "year_range",
+                "value": f"{formats['long_format']['year'].min()}-{formats['long_format']['year'].max()}"
+            }
+        ])
+        metadata.to_csv(metadata_file, index=False, encoding="utf-8")
+        files_created.append(metadata_file)
+        print(f"✓ Arquivo criado: {metadata_file}")
+        
+        return files_created
 
-                # Add all economic indicators
-                for col in country_data.columns:
-                    if col not in ["country", "year"] and pd.notna(row[col]):
-                        year_data["indicators"][col] = float(row[col])
 
-                result["data"][country].append(year_data)
-
-        return result
-
-    def export_to_json(self, data, filename="economic_indicators.json"):
-        """Export data to JSON file"""
-        with open(filename, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        print(f"\n✓ Data exported to: {filename}")
 
 
 def main():
     """Main execution"""
 
     print("=" * 70)
-    print("Coletor de dados econômicos do IMF")
+    print("Coletor de dados econômicos do IMF - Export CSV")
     print("=" * 70)
 
     collector = IMFEconomicDataCollector()
 
     # Configuration
-    countries = ["USA", "BRA", "GBR", "JPN", "DEU", "FRA", "CAN"]
+    countries = ["USA", "BRA", "ARG", "TUR", "JPN", "DEU"]
     indicators = ["PCPIPCH", "NGDPDPC", "PPPPC"]
-    start_year = 2018
+    start_year = 2023
     end_year = 2024
 
-    print(f"\nCountries: {', '.join(countries)}")
-    print(f"Period: {start_year}-{end_year}")
-    print("\nIndicators:")
+    print(f"\nPaíses: {', '.join(countries)}")
+    print(f"Período: {start_year}-{end_year}")
+    print("\nIndicadores:")
     for ind in indicators:
         print(f"  • {ind}: {collector.indicators_info.get(ind, ind)}")
 
     print("\n" + "=" * 70)
-    print("Coletando dados...")
+    print("Coletando dados do IMF...")
     print("=" * 70 + "\n")
 
     # Collect data
     df = collector.collect_data(countries, indicators, start_year, end_year)
 
-    # Process and export
     if not df.empty:
         print("\n" + "=" * 70)
-        print("Resumo")
+        print("Resumo dos dados coletados")
         print("=" * 70)
         print(f"Total de registros: {len(df)}")
         print("\nPor indicador:")
@@ -208,19 +214,31 @@ def main():
         print("\nPor país:")
         print(df.groupby("country").size().to_string())
 
-        # Format and export
-        api_data = collector.format_for_api(df)
-        collector.export_to_json(api_data, "economic_indicators.json")
-
+        # Prepare CSV formats
         print("\n" + "=" * 70)
-        print("✓ SUCCESS!")
-        print("=" * 70)
-        print("\nYou can now use 'economic_indicators.json' in your API")
+        print("Preparando arquivos CSV...")
+        print("=" * 70 + "\n")
+        
+        formats = collector.prepare_csv_formats(df)
+        
+        if formats:
+            # Export to CSV
+            files = collector.export_to_csv(formats)
+            
+            print("\n" + "=" * 70)
+            print("✓ PROCESSO CONCLUÍDO!")
+            print("=" * 70)
+            print(f"\nArquivos CSV criados: {len(files)}")
+            print("\nFormatos disponíveis:")
+            print("  • long_format: dados no formato longo (país, ano, indicador, valor)")
+            print("  • wide_format: indicadores como colunas (ideal para gráficos)")
+            print("  • by_country: ordenado por país (ideal para análise individual)")
+            print("  • metadata: informações sobre a coleta")
 
-    else:
-        print("\n" + "=" * 70)
-        print("✗ FAILED - No data collected")
-        print("=" * 70)
+        else:
+            print("\n" + "=" * 70)
+            print("✗ FALHA - Nenhum dado coletado")
+            print("=" * 70)
 
 
 if __name__ == "__main__":

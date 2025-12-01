@@ -1,0 +1,14 @@
+{
+  "id": "018d9584-24d6-7010-b82b-df1f0b154cc7",
+  "slug": "baldurs-gate-3",
+  "title": "Baldur's Gate 3",
+  "type": "game",
+  "mature": false,
+  "assets": {
+    "banner145": "https://assets.isthereanydeal.com/018d9584-24d6-7010-b82b-df1f0b154cc7/banner145.jpg?t=1763232078",
+    "banner300": "https://assets.isthereanydeal.com/018d9584-24d6-7010-b82b-df1f0b154cc7/banner300.jpg?t=1763232078",
+    "banner400": "https://assets.isthereanydeal.com/018d9584-24d6-7010-b82b-df1f0b154cc7/banner400.jpg?t=1763232078",
+    "banner600": "https://assets.isthereanydeal.com/018d9584-24d6-7010-b82b-df1f0b154cc7/banner600.jpg?t=1763232078",
+    "boxart": "https://assets.isthereanydeal.com/018d9584-24d6-7010-b82b-df1f0b154cc7/boxart.jpg?t=1763232078"
+  }
+}
