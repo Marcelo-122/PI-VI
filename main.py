@@ -1,4 +1,4 @@
-import json
+import csv
 from datetime import datetime
 
 import requests
@@ -75,37 +75,41 @@ class GamePriceAnalyzer:
         print(f"Erro na API: {response.text}")
         return []
 
-    def save_price_history_to_json(self, data, filename="price_history.json"):
-        """Salva o histórico de preços do jogo em um arquivo JSON"""
+    def save_price_history_to_csv(self, data, filename="price_history.csv"):
+        """Salva o histórico de preços do jogo em um arquivo CSV"""
         if not data:
             print(f"Nenhum dado para salvar em {filename}")
             return
 
-        # Process the data to a cleaner format
-        processed_data = {
-            "game_id": self.game_id,
-            "last_updated": datetime.utcnow().isoformat() + "Z",
-            "prices": [],
-        }
-
+        processed_data = []
         for entry in data:
-            price_entry = {
-                "timestamp": entry.get("timestamp", ""),
-                "shop": {
-                    "id": entry.get("shop", {}).get("id", ""),
-                    "name": entry.get("shop", {}).get("name", ""),
-                },
-                "deal": {
-                    "price": entry.get("deal", {}).get("price", {}),
-                    "regular": entry.get("deal", {}).get("regular", {}),
-                    "cut": entry.get("deal", {}).get("cut", 0),
-                },
-            }
-            processed_data["prices"].append(price_entry)
+            price_info = entry.get("deal", {}).get("price", {})
+            regular_info = entry.get("deal", {}).get("regular", {})
 
-        # Salva o histórico de preços do jogo em um arquivo JSON
-        with open(filename, "w", encoding="utf-8") as f:
-            json.dump(processed_data, f, indent=2, ensure_ascii=False)
+            processed_data.append(
+                {
+                    "timestamp": entry.get("timestamp", ""),
+                    "shop_id": entry.get("shop", {}).get("id", ""),
+                    "shop_name": entry.get("shop", {}).get("name", ""),
+                    "price_amount": price_info.get("amount"),
+                    "price_currency": price_info.get("currency"),
+                    "regular_amount": regular_info.get("amount"),
+                    "regular_currency": regular_info.get("currency"),
+                    "cut": entry.get("deal", {}).get("cut", 0),
+                }
+            )
+
+        if not processed_data:
+            print("Nenhum dado processado para salvar.")
+            return
+
+        # Salva o histórico de preços em um arquivo CSV
+        with open(filename, "w", newline="", encoding="utf-8") as f:
+            fieldnames = processed_data[0].keys()
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+
+            writer.writeheader()
+            writer.writerows(processed_data)
 
         print(f"Histórico de preços salvo em {filename}")
         return processed_data
@@ -134,9 +138,8 @@ class GamePriceAnalyzer:
             print("\nNenhum dado encontrado com os filtros fornecidos.")
             return
 
-        result = self.save_price_history_to_json(history_data)
-        if result and "prices" in result and result["prices"]:
-            prices = result["prices"]
+        prices = self.save_price_history_to_csv(history_data)
+        if prices:
             latest = prices[0]
             oldest = prices[-1]
 
@@ -151,24 +154,23 @@ class GamePriceAnalyzer:
                 self._print_price_entry(oldest, "Preço mais antigo")
 
                 # Calcula variação percentual
-                old_price = oldest["deal"]["price"].get("amount")
-                new_price = latest["deal"]["price"].get("amount")
+                old_price = oldest["price_amount"]
+                new_price = latest["price_amount"]
                 if old_price and new_price and old_price > 0:
                     change = ((new_price - old_price) / old_price) * 100
                     change_type = "aumento" if change > 0 else "queda"
                     print(f"Variação: {abs(change):.1f}% de {change_type}")
 
-        print("\nAnálise concluída! Verifique o arquivo price_history.json")
+        print("\nAnálise concluída! Verifique o arquivo price_history.csv")
 
     def _print_price_entry(self, entry, label="Preço"):
         """Helper para exibir informações de uma entrada de preço"""
         print(f"{label}:")
         print(f"- Data: {entry['timestamp']}")
-        print(f"- Loja: {entry['shop']['name']}")
-        price = entry["deal"]["price"]
-        print(f"- Valor: {price.get('amount')} {price.get('currency', '')}")
-        if entry["deal"].get("cut"):
-            print(f"- Desconto: {entry['deal']['cut']}%")
+        print(f"- Loja: {entry['shop_name']}")
+        print(f"- Valor: {entry['price_amount']} {entry['price_currency']}")
+        if entry.get("cut"):
+            print(f"- Desconto: {entry['cut']}%")
 
 
 if __name__ == "__main__":
@@ -176,6 +178,6 @@ if __name__ == "__main__":
 
     # Exemplo de uso com intervalo de datas
     analyzer.run_analysis(
-        start_date="2023-01-01T00:00:00Z",  # Data de início
-        end_date="2023-06-30T23:59:59Z",  # Data de término
+        start_date="2005-01-01T00:00:00Z",  # Data de início
+        end_date="2025-11-30T23:59:59Z",  # Data de término
     )
